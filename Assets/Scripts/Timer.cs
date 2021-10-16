@@ -29,22 +29,27 @@ public class Timer
 
     public void Pause()
     {
-        if (!Running || Paused)
-        {
+        if (Paused) {
             return;
         }
         Paused = true;
-        _remainingDuration -= Time.time - _referenceTime;
+        if (Running)
+        {
+            _remainingDuration -= Time.time - _referenceTime;
+        }
     }
 
     public void Resume()
     {
-        if (!Running || !Paused)
+        if (!Paused)
         {
             return;
         }
         Paused = false;
-        _referenceTime = Time.time;
+        if (Running)
+        {
+            _referenceTime = Time.time;
+        }
     }
 
     public Timer(float frequency = 1f, bool start = true)
@@ -68,10 +73,10 @@ public class Timer
         return true;
     }
 
-    public void Reset(bool Stop = false)
+    public void Reset(bool stop = false)
     {
         _referenceTime = Time.time;
         _remainingDuration = Frequency;
-        Running = !Stop;
+        Running = !stop;
     }
 }

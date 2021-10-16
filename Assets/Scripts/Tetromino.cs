@@ -2,6 +2,8 @@
 
 using System.Collections;
 using UnityEngine;
+using Pixelplacement;
+using System;
 
 public class Tetromino : MonoBehaviour
 {
@@ -31,6 +33,7 @@ public class Tetromino : MonoBehaviour
     // X and Y size of each block.
     public const float BlockSize = 1;
 
+    private bool _paused = false;
     private readonly Timer HardTerminateTimer = new Timer(HardTerminateDelaySeconds, false);
     private readonly Timer SoftTerminateTimer = new Timer(FallRateSeconds, false);
     private readonly Timer FallTimer = new Timer(FallRateSeconds);
@@ -43,6 +46,7 @@ public class Tetromino : MonoBehaviour
         public PausedScope(Tetromino tetromino)
         {
             _tetromino = tetromino;
+            _tetromino._paused = true;
             _tetromino.HardTerminateTimer.Pause();
             _tetromino.SoftTerminateTimer.Pause();
             _tetromino.FallTimer.Pause();
@@ -52,6 +56,7 @@ public class Tetromino : MonoBehaviour
 
         public void Dispose()
         {
+            _tetromino._paused = false;
             _tetromino.HardTerminateTimer.Resume();
             _tetromino.SoftTerminateTimer.Resume();
             _tetromino.FallTimer.Resume();
@@ -152,30 +157,53 @@ public class Tetromino : MonoBehaviour
         return true;
     }
 
+
+    float DefaultSmoothMovementDuration()
+    {
+        return FallTimer.Frequency / 7;
+    }
+
+
     bool Move(Vector2 direction)
     {
         if (!CanMove(direction))
         {
             return false;
         }
-        StartCoroutine(TransitionTo(transform.position + new Vector3(direction.x, direction.y), FallTimer.Frequency / 10));
-        OnMove();
+        StartCoroutine(SmoothMovement(new Vector3(direction.x, direction.y), then: OnMove));
         return true;
     }
 
-    IEnumerator TransitionTo(Vector3 targetPosition, float duration)
+    IEnumerator SmoothMovement(Vector3 offset, float? rotateAngle = null, float? duration = null, Action? then = null)
     {
+        while (_paused)
+        {
+            yield return new WaitForFixedUpdate();
+        }
         using (new PausedScope(this)) {
+            duration ??= DefaultSmoothMovementDuration();
             var positionBefore = transform.position;
+            var targetPosition = positionBefore + offset;
+            var rotationBefore = Body!.transform.localRotation;
             var startTime = Time.fixedTime;
             for (var elapsed = 0f; elapsed < duration; elapsed = Time.fixedTime - startTime) {
-                transform.position = Vector3.Lerp(positionBefore, targetPosition, Mathf.SmoothStep(0, 1, elapsed / duration));
+                var progress = Tween.EaseOutBack.Evaluate(elapsed / duration.Value);
+                transform.position = Vector3.Lerp(positionBefore, targetPosition, progress);
+                if (rotateAngle.HasValue)
+                {
+                    Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, progress * rotateAngle.Value);
+                }
                 yield return new WaitForFixedUpdate();
             }
             transform.position = targetPosition;
+            if (rotateAngle.HasValue)
+            {
+                Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, rotateAngle.Value);
+            }
             yield return new WaitForFixedUpdate();
-            yield break;
+            then?.Invoke();
         }
+        yield break;
     }
 
     IEnumerator OnMoveImpl()
@@ -183,10 +211,12 @@ public class Tetromino : MonoBehaviour
         yield return new WaitForFixedUpdate();
         if (CanMove(Vector2.down))
         {
-            HardTerminateTimer.Reset(true);
-            SoftTerminateTimer.Reset(true);
+            Debug.Log("Can move down");
+            HardTerminateTimer.Reset(stop: true);
+            SoftTerminateTimer.Reset(stop: true);
             yield break;
         }
+        Debug.Log($"Can't move down {SoftTerminateTimer.Paused}");
         // Hard terminate timer is only reset if it stops touching down (terminate even if player keeps moving).
         if (!HardTerminateTimer.Running)
         {
@@ -209,9 +239,7 @@ public class Tetromino : MonoBehaviour
 
     void Rotate(Vector3 displacement)
     {
-        Body!.transform.Rotate(0, 0, 90);
-        transform.position += displacement;
-        OnMove();
+        StartCoroutine(SmoothMovement(displacement, rotateAngle: 90, then: OnMove));
     }
 
     private readonly Vector3[] _rotationDisplacements = new Vector3[] {
@@ -230,6 +258,10 @@ public class Tetromino : MonoBehaviour
 
     IEnumerator RotateIfPossible()
     {
+        while (_paused)
+        {
+            yield return new WaitForFixedUpdate();
+        }
         using (new PausedScope(this))
         {
             // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
