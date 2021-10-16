@@ -38,13 +38,13 @@ public class Tetromino : MonoBehaviour
     public void Update()
     {
         // Move left
-        bool MoveInputTimerTick = RepeatedInputTimer.OnUpdate();
+        bool RepeatedInputTimerTick = RepeatedInputTimer.OnUpdate();
         if (Input.GetKeyDown(KeyCode.LeftArrow))
         {
             Move(Vector2.left);
             RepeatedInputTimer.Reset();
         }
-        else if (MoveInputTimerTick && Input.GetKey(KeyCode.LeftArrow))
+        else if (RepeatedInputTimerTick && Input.GetKey(KeyCode.LeftArrow))
         {
             Move(Vector2.left);
         }
@@ -55,7 +55,7 @@ public class Tetromino : MonoBehaviour
             Move(Vector2.right);
             RepeatedInputTimer.Reset();
         }
-        else if (MoveInputTimerTick && Input.GetKey(KeyCode.RightArrow))
+        else if (RepeatedInputTimerTick && Input.GetKey(KeyCode.RightArrow))
         {
             Move(Vector2.right);
         }
