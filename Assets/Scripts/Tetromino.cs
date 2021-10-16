@@ -1,11 +1,12 @@
+#nullable enable
+
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class Tetromino : MonoBehaviour
 {
-    public GameController Controller;
-    public GameObject Body;
+    public GameController? Controller;
+    public GameObject? Body;
     private ContactFilter2D CollisionFilter;
 
     public void Start()
@@ -114,7 +115,7 @@ public class Tetromino : MonoBehaviour
 
     bool CanMove(Vector2 direction)
     {
-        foreach (var collider in Body.GetComponentsInChildren<BoxCollider2D>())
+        foreach (var collider in Body!.GetComponentsInChildren<BoxCollider2D>())
         {
             int collisions = collider.Raycast(direction, CollisionFilter, _hits, BlockSize);
             for (int i = 0; i < collisions; ++i)
@@ -165,12 +166,12 @@ public class Tetromino : MonoBehaviour
     // Terminate this tetromino, letting the GameController break it down and spawn another one.
     void Terminate()
     {
-        Controller.OnTetrominoTermination(this);
+        Controller!.OnTetrominoTermination(this);
     }
 
     void Rotate(Vector3 displacement)
     {
-        Body.transform.Rotate(0, 0, 90);
+        Body!.transform.Rotate(0, 0, 90);
         transform.position += displacement;
         OnMove();
     }
@@ -199,7 +200,7 @@ public class Tetromino : MonoBehaviour
         // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
         // displacement that makes it not overlap any other block or wall.
         var rotationChecker = Instantiate(Body, this.transform);
-        foreach (SpriteRenderer sprite in rotationChecker.GetComponentsInChildren<SpriteRenderer>())
+        foreach (SpriteRenderer sprite in rotationChecker!.GetComponentsInChildren<SpriteRenderer>())
         {
             sprite.enabled = false;
         }

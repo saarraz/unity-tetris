@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,23 +8,43 @@ using UnityEngine;
 
 public class GameController : MonoBehaviour
 {
-    public TetrominoGenerator Generator;
-    public RowDetector[] RowDetectors;
+    public TetrominoGenerator? Generator;
+    public RowDetector[]? RowDetectors;
 
-    void Start()
+    public Tetromino? CurrentTetromino { get; private set; }
+    public GameObject? CurrentTetrominoPrefab { get; private set; }
+    public GameObject? SavedTetrominoPrefab { get; private set; }
+
+    private bool _tetrominoSavedSinceLastSpawn = false;
+
+    public void Start()
     {
         Spawn();
         RowDetectors = GetComponentsInChildren<RowDetector>();
     }
 
-    public void Spawn()
+    public void Spawn(GameObject? Prefab = null)
     {
-        Generator.Generate();
+        Debug.Assert(!CurrentTetrominoPrefab, "Spawn() called while turn is in progress");
+        (CurrentTetromino, CurrentTetrominoPrefab) = Generator!.Generate(Prefab);
+        Debug.Log($"Prefab: {CurrentTetrominoPrefab}");
+        _tetrominoSavedSinceLastSpawn = false;
+    }
+
+    public void CancelTurn()
+    {
+        if (!CurrentTetromino)
+        {
+            return;
+        }
+        Destroy(CurrentTetromino!.gameObject);
+        CurrentTetrominoPrefab = null;
+        CurrentTetromino = null;
     }
 
     public void DecomposeTetromino(Tetromino tetromino)
     {
-        Transform[] blocks = (from Transform block in tetromino.Body.transform select block).ToArray();
+        Transform[] blocks = (from Transform block in tetromino.Body!.transform select block).ToArray();
         foreach (Transform block in blocks)
         {
             block.SetParent(this.transform);
@@ -45,7 +67,7 @@ public class GameController : MonoBehaviour
         DecomposeTetromino(tetromino);
         yield return new WaitForFixedUpdate();
         var destroyedRows = new List<Tuple<RowDetector, IEnumerable<GameObject>>> ();
-        foreach (RowDetector rowDetector in RowDetectors)
+        foreach (RowDetector rowDetector in RowDetectors!)
         {
             var blocks = rowDetector.DetectRow();
             if (blocks == null)
@@ -73,8 +95,30 @@ public class GameController : MonoBehaviour
         yield break;
     }
 
-    void Update()
+    private void SaveTetromino()
     {
-        
+        if (!CurrentTetrominoPrefab) {
+            Debug.LogWarning("CurrentTetrominoPrefab was null when trying to save tetromino");
+            return;
+        }
+        GameObject newSaved = CurrentTetrominoPrefab!;
+        CancelTurn();
+        Spawn(SavedTetrominoPrefab);
+        SavedTetrominoPrefab = newSaved;
+    }
+
+    public void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
+            if (!_tetrominoSavedSinceLastSpawn)
+            {
+                SaveTetromino();
+                _tetrominoSavedSinceLastSpawn = true;
+            } else
+            {
+                Debug.Log("Skipping save since already saved since last spawn");
+            }
+        }
     }
 }

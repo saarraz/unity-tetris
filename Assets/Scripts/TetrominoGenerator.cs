@@ -8,9 +8,12 @@ public class TetrominoGenerator : MonoBehaviour
     public GameObject[] Tetrominoes;
 
 
-    public void Generate()
+    public Tuple<Tetromino, GameObject> Generate(GameObject Prefab = null)
     {
-        var Prefab = Tetrominoes[UnityEngine.Random.Range(0, Tetrominoes.Length)];
-        Instantiate(Prefab, transform.position, Quaternion.identity);
+        if (!Prefab)
+        {
+            Prefab = Tetrominoes[UnityEngine.Random.Range(0, Tetrominoes.Length)];
+        }
+        return Tuple.Create(Instantiate(Prefab, transform.position, Quaternion.identity).GetComponent<Tetromino>(), Prefab);
     }
 }
