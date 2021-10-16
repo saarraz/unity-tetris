@@ -10,18 +10,61 @@ public class GameController : MonoBehaviour
 {
     public TetrominoGenerator? Generator;
     public RowDetector[]? RowDetectors;
+    public GameObject? SavedTetrominoDisplay;
+    public GameObject? NextTetrominoPreviewDisplay;
 
     public Tetromino? CurrentTetromino { get; private set; }
     public GameObject? CurrentTetrominoPrefab { get; private set; }
-    public GameObject? SavedTetrominoPrefab { get; private set; }
+    private GameObject? _nextTetromino;
+    public GameObject? NextTetrominoPrefab {
+        get => _nextTetromino;
+        private set {
+            _nextTetromino = value;
+            if (value)
+            {
+                ShowTetrominoInDisplay(value!, NextTetrominoPreviewDisplay!);
+            }
+        }
+    }
+    private GameObject? _savedTetromino;
+    public GameObject? SavedTetrominoPrefab {
+        get => _savedTetromino;
+        private set
+        {
+            _savedTetromino = value;
+            if (value)
+            {
+                ShowTetrominoInDisplay(value!, SavedTetrominoDisplay!);
+            }
+        }
+    }
 
     private bool _tetrominoSavedSinceLastSpawn = false;
 
     public void Start()
     {
-        Spawn();
         RowDetectors = GetComponentsInChildren<RowDetector>();
+        StartNextTurn();
     }
+
+    public void StartNextTurn()
+    {
+        Debug.Assert(!CurrentTetrominoPrefab, "StartNextTurn() called while turn is in progress");
+        Spawn(NextTetrominoPrefab);
+        NextTetrominoPrefab = Generator!.GetRandomTetrominoPrefab();
+
+    }
+
+    void ShowTetrominoInDisplay(GameObject tetrominoPrefab, GameObject display)
+    {
+        var children = (from Transform child in display.transform select child.gameObject).ToArray();
+        foreach (var child in children)
+        {
+            Destroy(child);
+        }
+        Instantiate(tetrominoPrefab.GetComponent<Tetromino>().Body, display.transform);
+    }
+
 
     public void Spawn(GameObject? Prefab = null)
     {
@@ -54,7 +97,7 @@ public class GameController : MonoBehaviour
 
     public IEnumerable<GameObject> AllBlocks()
     {
-        return GameObject.FindGameObjectsWithTag("Block");
+        return (from Transform child in transform where child.tag == "Block" select child.gameObject);
     }
 
     public void OnTetrominoTermination(Tetromino tetromino)
@@ -65,6 +108,8 @@ public class GameController : MonoBehaviour
     private IEnumerator ProcessTetrominoTermination(Tetromino tetromino)
     { 
         DecomposeTetromino(tetromino);
+        CurrentTetromino = null;
+        CurrentTetrominoPrefab = null;
         yield return new WaitForFixedUpdate();
         var destroyedRows = new List<Tuple<RowDetector, IEnumerable<GameObject>>> ();
         foreach (RowDetector rowDetector in RowDetectors!)
@@ -91,7 +136,7 @@ public class GameController : MonoBehaviour
                 block.transform.position -= new Vector3(0, rowsDestroyedBelow * Tetromino.BlockSize);
             }
         }
-        Spawn();
+        StartNextTurn();
         yield break;
     }
 

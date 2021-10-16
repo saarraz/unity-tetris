@@ -5,14 +5,20 @@ using UnityEngine;
 
 public class TetrominoGenerator : MonoBehaviour
 {
-    public GameObject[] Tetrominoes;
+    public GameObject[] TetrominoPrefabs;
+
+
+    public GameObject GetRandomTetrominoPrefab()
+    {
+        return TetrominoPrefabs[UnityEngine.Random.Range(0, TetrominoPrefabs.Length)];
+    }
 
 
     public Tuple<Tetromino, GameObject> Generate(GameObject Prefab = null)
     {
         if (!Prefab)
         {
-            Prefab = Tetrominoes[UnityEngine.Random.Range(0, Tetrominoes.Length)];
+            Prefab = GetRandomTetrominoPrefab();
         }
         return Tuple.Create(Instantiate(Prefab, transform.position, Quaternion.identity).GetComponent<Tetromino>(), Prefab);
     }
