@@ -36,6 +36,29 @@ public class Tetromino : MonoBehaviour
     private readonly Timer FallTimer = new Timer(FallRateSeconds);
     private readonly Timer RepeatedInputTimer = new Timer(InputRepeatRateSeconds);
 
+    public class PausedScope : System.IDisposable
+    {
+        public Tetromino _tetromino;
+
+        public PausedScope(Tetromino tetromino)
+        {
+            _tetromino = tetromino;
+            _tetromino.HardTerminateTimer.Pause();
+            _tetromino.SoftTerminateTimer.Pause();
+            _tetromino.FallTimer.Pause();
+            _tetromino.RepeatedInputTimer.Pause();
+        }
+
+
+        public void Dispose()
+        {
+            _tetromino.HardTerminateTimer.Resume();
+            _tetromino.SoftTerminateTimer.Resume();
+            _tetromino.FallTimer.Resume();
+            _tetromino.RepeatedInputTimer.Resume();
+        }
+    }
+
     public void Update()
     {
         // Move left
@@ -135,9 +158,24 @@ public class Tetromino : MonoBehaviour
         {
             return false;
         }
-        transform.position += new Vector3(direction.x, direction.y);
+        StartCoroutine(TransitionTo(transform.position + new Vector3(direction.x, direction.y), FallTimer.Frequency / 10));
         OnMove();
         return true;
+    }
+
+    IEnumerator TransitionTo(Vector3 targetPosition, float duration)
+    {
+        using (new PausedScope(this)) {
+            var positionBefore = transform.position;
+            var startTime = Time.fixedTime;
+            for (var elapsed = 0f; elapsed < duration; elapsed = Time.fixedTime - startTime) {
+                transform.position = Vector3.Lerp(positionBefore, targetPosition, Mathf.SmoothStep(0, 1, elapsed / duration));
+                yield return new WaitForFixedUpdate();
+            }
+            transform.position = targetPosition;
+            yield return new WaitForFixedUpdate();
+            yield break;
+        }
     }
 
     IEnumerator OnMoveImpl()
@@ -192,56 +230,50 @@ public class Tetromino : MonoBehaviour
 
     IEnumerator RotateIfPossible()
     {
-        HardTerminateTimer.Pause();
-        SoftTerminateTimer.Pause();
-        FallTimer.Pause();
-        RepeatedInputTimer.Pause();
-
-        // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
-        // displacement that makes it not overlap any other block or wall.
-        var rotationChecker = Instantiate(Body, this.transform);
-        foreach (SpriteRenderer sprite in rotationChecker!.GetComponentsInChildren<SpriteRenderer>())
+        using (new PausedScope(this))
         {
-            sprite.enabled = false;
-        }
-        try
-        {
-            rotationChecker.transform.Rotate(0, 0, 90);
-            foreach (Vector3 displacement in _rotationDisplacements)
+            // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
+            // displacement that makes it not overlap any other block or wall.
+            var rotationChecker = Instantiate(Body, this.transform);
+            foreach (SpriteRenderer sprite in rotationChecker!.GetComponentsInChildren<SpriteRenderer>())
             {
-                if (displacement.x != 0 || displacement.y != 0)
+                sprite.enabled = false;
+            }
+            try
+            {
+                rotationChecker.transform.Rotate(0, 0, 90);
+                foreach (Vector3 displacement in _rotationDisplacements)
                 {
-                    rotationChecker.transform.localPosition = displacement;
-                }
-                yield return new WaitForFixedUpdate();
-                bool overlap = false;
-                foreach (var collider in rotationChecker.GetComponentsInChildren<BoxCollider2D>())
-                {
-                    int colliderCount = collider.OverlapCollider(CollisionFilter, _colliders);
-
-                    for (int j = 0; j < colliderCount; ++j)
+                    if (displacement.x != 0 || displacement.y != 0)
                     {
-                        if (IsExternalCollider(_colliders[j]))
+                        rotationChecker.transform.localPosition = displacement;
+                    }
+                    yield return new WaitForFixedUpdate();
+                    bool overlap = false;
+                    foreach (var collider in rotationChecker.GetComponentsInChildren<BoxCollider2D>())
+                    {
+                        int colliderCount = collider.OverlapCollider(CollisionFilter, _colliders);
+
+                        for (int j = 0; j < colliderCount; ++j)
                         {
-                            overlap = true;
-                            break;
+                            if (IsExternalCollider(_colliders[j]))
+                            {
+                                overlap = true;
+                                break;
+                            }
                         }
                     }
-                }
-                if (!overlap)
-                {
-                    Rotate(displacement);
-                    break;
+                    if (!overlap)
+                    {
+                        Rotate(displacement);
+                        break;
+                    }
                 }
             }
-        }
-        finally
-        {
-            DestroyImmediate(rotationChecker);
-            HardTerminateTimer.Resume();
-            SoftTerminateTimer.Resume();
-            FallTimer.Resume();
-            RepeatedInputTimer.Resume();
+            finally
+            {
+                DestroyImmediate(rotationChecker);
+            }
         }
     }
 }
