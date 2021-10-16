@@ -23,10 +23,10 @@ public class Tetromino : MonoBehaviour
     public const float FallRateSeconds = 1;
 
     // Tetromino accelerated fall rate (when pressing DOWN).
-    public const float FastFallRateSeconds = .1f;
+    public const float FastFallRateSeconds = .025f;
 
     // How often to consider prolonged presses of right and left as separate inputs.
-    public const float InputRepeatRateSeconds = FastFallRateSeconds;
+    public const float InputRepeatRateSeconds = .1f;
 
     // X and Y size of each block.
     public const float BlockSize = 1;
