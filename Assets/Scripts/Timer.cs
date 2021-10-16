@@ -9,7 +9,7 @@ public class Timer
 
         set
         {
-            RemainingDuration -= _frequency - value;
+            _remainingDuration -= _frequency - value;
             _frequency = value;
         }
     }
@@ -17,7 +17,7 @@ public class Timer
     public bool Paused { get; private set; }
 
     private float _referenceTime;
-    private float? RemainingDuration;
+    private float _remainingDuration;
     private float _frequency;
 
 
@@ -34,7 +34,7 @@ public class Timer
             return;
         }
         Paused = true;
-        RemainingDuration -= Time.time - _referenceTime;
+        _remainingDuration -= Time.time - _referenceTime;
     }
 
     public void Resume()
@@ -59,7 +59,7 @@ public class Timer
         {
             return false;
         }
-        if ((Time.time - _referenceTime) < RemainingDuration)
+        if ((Time.time - _referenceTime) < _remainingDuration)
         {
             return false;
         }
@@ -71,7 +71,7 @@ public class Timer
     public void Reset(bool Stop = false)
     {
         _referenceTime = Time.time;
-        RemainingDuration = Frequency;
+        _remainingDuration = Frequency;
         Running = !Stop;
     }
 }

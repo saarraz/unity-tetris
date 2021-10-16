@@ -8,71 +8,124 @@ public class Tetromino : MonoBehaviour
     public GameObject Body;
     private ContactFilter2D CollisionFilter;
 
-    private void Start()
+    public void Start()
     {
         Controller = FindObjectOfType<GameController>();
         CollisionFilter = new ContactFilter2D();
         CollisionFilter.SetLayerMask(new LayerMask() { value = LayerMask.GetMask("Default") });
     }
 
-    private const float TerminateDelaySeconds = 3;
-    private const float FallRateSeconds = 1;
-    private const float FastFallRateSeconds = .1f;
-    private const float InputRepeatRateSeconds = FastFallRateSeconds;
+    // Delay from when the Tetromino touches the ground until the turn ends, even if the player keeps moving the block.
+    public const float HardTerminateDelaySeconds = 3;
+
+    // Tetromino normal fall rate.
+    public const float FallRateSeconds = 1;
+
+    // Tetromino accelerated fall rate (when pressing DOWN).
+    public const float FastFallRateSeconds = .1f;
+
+    // How often to consider prolonged presses of right and left as separate inputs.
+    public const float InputRepeatRateSeconds = FastFallRateSeconds;
+
+    // X and Y size of each block.
     public const float BlockSize = 1;
 
-    private float LastMoveTime = 0;
-    private Timer HardTerminateTimer = new Timer(TerminateDelaySeconds, false);
-    private Timer SoftTerminateTimer = new Timer(FallRateSeconds, false);
-    private Timer FallTimer = new Timer(FallRateSeconds);
-    private Timer MoveInputTimer = new Timer(InputRepeatRateSeconds);
+    private readonly Timer HardTerminateTimer = new Timer(HardTerminateDelaySeconds, false);
+    private readonly Timer SoftTerminateTimer = new Timer(FallRateSeconds, false);
+    private readonly Timer FallTimer = new Timer(FallRateSeconds);
+    private readonly Timer RepeatedInputTimer = new Timer(InputRepeatRateSeconds);
 
-    private RaycastHit2D[] hits = new RaycastHit2D[3];
+    public void Update()
+    {
+        // Move left
+        bool MoveInputTimerTick = RepeatedInputTimer.OnUpdate();
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            Move(Vector2.left);
+            RepeatedInputTimer.Reset();
+        }
+        else if (MoveInputTimerTick && Input.GetKey(KeyCode.LeftArrow))
+        {
+            Move(Vector2.left);
+        }
 
+        // Move right
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            Move(Vector2.right);
+            RepeatedInputTimer.Reset();
+        }
+        else if (MoveInputTimerTick && Input.GetKey(KeyCode.RightArrow))
+        {
+            Move(Vector2.right);
+        }
 
-    bool isExternalCollider(Collider2D collider)
+        // Downward acceleration
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            FallTimer.Frequency = FastFallRateSeconds;
+        }
+        if (Input.GetKeyUp(KeyCode.DownArrow))
+        {
+            FallTimer.Frequency = FallRateSeconds;
+        }
+
+        // Rotate
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            StartCoroutine(RotateIfPossible());
+        }
+
+        // Fall
+        bool FallTimerTick = FallTimer.OnUpdate();
+        if (FallTimerTick)
+        {
+            Move(Vector2.down);
+        }
+
+        // Soft terminate - terminate if the Tetromino is touching something below and hasn't been moved for a certain
+        // period. This allows players to still move the Tetromino after it has been touched down, but if they don't
+        // want to - terminates the Tetromino.
+        bool SoftTerminateTimerTick = SoftTerminateTimer.OnUpdate();
+        if (SoftTerminateTimerTick)
+        {
+            Terminate();
+        }
+
+        // Hard terminate - terminate if the block has been touching something below for a certain period, regardless
+        // of movement. This prevents players from moving the piece endlessly left and right across the floor.
+        bool HardTerminateTimerTick = HardTerminateTimer.OnUpdate();
+        if (HardTerminateTimerTick)
+        {
+            Terminate();
+        }
+    }
+
+    // Check if the collider is not part of this Tetromino, meaning it is either a wall or an already laid-down Block.
+    bool IsExternalCollider(Collider2D collider)
     {
         var potentialBlock = collider;
-        var potentialBody = collider.transform.parent?.gameObject;
+        var potentialBody = potentialBlock.transform.parent?.gameObject;
         var potentialTetromino = potentialBody?.transform?.parent?.gameObject;
         return potentialTetromino != gameObject;
     }
+
+    private readonly RaycastHit2D[] _hits = new RaycastHit2D[3];
 
     bool CanMove(Vector2 direction)
     {
         foreach (var collider in Body.GetComponentsInChildren<BoxCollider2D>())
         {
-            int collisions = collider.Raycast(direction, CollisionFilter, hits, BlockSize);
+            int collisions = collider.Raycast(direction, CollisionFilter, _hits, BlockSize);
             for (int i = 0; i < collisions; ++i)
             {
-                if (isExternalCollider(hits[i].collider))
+                if (IsExternalCollider(_hits[i].collider))
                 {
                     return false;
                 }
             }
         }
         return true;
-    }
-
-    IEnumerator OnMoveImpl()
-    {
-        yield return new WaitForFixedUpdate();
-        if (CanMove(Vector2.down))
-        {
-            HardTerminateTimer.Reset(true);
-            SoftTerminateTimer.Reset(true);
-            yield break;
-        }
-        if (!HardTerminateTimer.Running)
-        {
-            HardTerminateTimer.Start();
-        }
-        SoftTerminateTimer.Start();
-    }
-
-    void OnMove()
-    {
-        StartCoroutine(OnMoveImpl());
     }
 
     bool Move(Vector2 direction)
@@ -86,12 +139,34 @@ public class Tetromino : MonoBehaviour
         return true;
     }
 
+    IEnumerator OnMoveImpl()
+    {
+        yield return new WaitForFixedUpdate();
+        if (CanMove(Vector2.down))
+        {
+            HardTerminateTimer.Reset(true);
+            SoftTerminateTimer.Reset(true);
+            yield break;
+        }
+        // Hard terminate timer is only reset if it stops touching down (terminate even if player keeps moving).
+        if (!HardTerminateTimer.Running)
+        {
+            HardTerminateTimer.Start();
+        }
+        // Soft timer is reset whenever the player moves (will only tick if player decides to stop moving).
+        SoftTerminateTimer.Start();
+    }
+
+    void OnMove()
+    {
+        StartCoroutine(OnMoveImpl());
+    }
+
+    // Terminate this tetromino, letting the GameController break it down and spawn another one.
     void Terminate()
     {
         Controller.OnTetrominoTermination(this);
     }
-
-    private Collider2D[] colliders = new Collider2D[5];
 
     void Rotate(Vector3 displacement)
     {
@@ -100,7 +175,7 @@ public class Tetromino : MonoBehaviour
         OnMove();
     }
 
-    Vector3[] RotationDisplacements = new Vector3[] {
+    private readonly Vector3[] _rotationDisplacements = new Vector3[] {
         new Vector3( 0, 0, 0),
         new Vector3(0, 1, 0),
         new Vector3(0, 2, 0),
@@ -112,13 +187,17 @@ public class Tetromino : MonoBehaviour
         new Vector3(-3, 0, 0)
     };
 
+    private readonly Collider2D[] _colliders = new Collider2D[5];
+
     IEnumerator RotateIfPossible()
     {
         HardTerminateTimer.Pause();
         SoftTerminateTimer.Pause();
         FallTimer.Pause();
-        MoveInputTimer.Pause();
+        RepeatedInputTimer.Pause();
 
+        // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
+        // displacement that makes it not overlap any other block or wall.
         var rotationChecker = Instantiate(Body, this.transform);
         foreach (SpriteRenderer sprite in rotationChecker.GetComponentsInChildren<SpriteRenderer>())
         {
@@ -127,7 +206,7 @@ public class Tetromino : MonoBehaviour
         try
         {
             rotationChecker.transform.Rotate(0, 0, 90);
-            foreach (Vector3 displacement in RotationDisplacements)
+            foreach (Vector3 displacement in _rotationDisplacements)
             {
                 if (displacement.x != 0 || displacement.y != 0)
                 {
@@ -137,11 +216,11 @@ public class Tetromino : MonoBehaviour
                 bool overlap = false;
                 foreach (var collider in rotationChecker.GetComponentsInChildren<BoxCollider2D>())
                 {
-                    int colliderCount = collider.OverlapCollider(CollisionFilter, colliders);
+                    int colliderCount = collider.OverlapCollider(CollisionFilter, _colliders);
 
                     for (int j = 0; j < colliderCount; ++j)
                     {
-                        if (isExternalCollider(colliders[j]))
+                        if (IsExternalCollider(_colliders[j]))
                         {
                             overlap = true;
                             break;
@@ -161,68 +240,7 @@ public class Tetromino : MonoBehaviour
             HardTerminateTimer.Resume();
             SoftTerminateTimer.Resume();
             FallTimer.Resume();
-            MoveInputTimer.Resume();
-        }
-    }
-
-    void Update()
-    {
-        // Move left/right
-        bool MoveInputTimerTick = MoveInputTimer.OnUpdate();
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
-        {
-            Move(Vector2.left);
-            MoveInputTimer.Reset();
-        }
-        else if (MoveInputTimerTick && Input.GetKey(KeyCode.LeftArrow))
-        {
-            Move(Vector2.left);
-        }
-        if (Input.GetKeyDown(KeyCode.RightArrow))
-        {
-            Move(Vector2.right);
-            MoveInputTimer.Reset();
-        }
-        else if (MoveInputTimerTick && Input.GetKey(KeyCode.RightArrow))
-        {
-            Move(Vector2.right);
-        }
-
-        // Rotate
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            StartCoroutine(RotateIfPossible());
-        }
-
-        // Fall
-        bool FallTimerTick = FallTimer.OnUpdate();
-        if (FallTimerTick)
-        {
-            Move(Vector2.down);
-        }
-
-        bool SoftTerminateTimerTick = SoftTerminateTimer.OnUpdate();
-        // Check if any movement happened since last soft timer tick - if not, terminate now.
-        if (SoftTerminateTimerTick)
-        {
-            Terminate();
-        }
-
-        bool HardTerminateTimerTick = HardTerminateTimer.OnUpdate();
-        // When the hard timer ticks - terminate the piece even if the player is still moving it.
-        if (HardTerminateTimerTick)
-        {
-            Terminate();
-        }
-
-        // Downward acceleration
-        if (Input.GetKeyDown(KeyCode.DownArrow))
-        {
-            FallTimer.Frequency = FastFallRateSeconds;
-        }
-        if (Input.GetKeyUp(KeyCode.DownArrow))
-        {
-            FallTimer.Frequency = FallRateSeconds;
+            RepeatedInputTimer.Resume();
         }
     }
 }
