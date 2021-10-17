@@ -16,6 +16,7 @@ public class Tetromino : MonoBehaviour
         Controller = FindObjectOfType<GameController>();
         CollisionFilter = new ContactFilter2D();
         CollisionFilter.SetLayerMask(new LayerMask() { value = LayerMask.GetMask("Default") });
+        FallTimer.Start();
     }
 
     // Delay from when the Tetromino touches the ground until the turn ends, even if the player keeps moving the block.
@@ -36,33 +37,8 @@ public class Tetromino : MonoBehaviour
     private bool _paused = false;
     private readonly Timer HardTerminateTimer = new Timer(HardTerminateDelaySeconds, false);
     private readonly Timer SoftTerminateTimer = new Timer(FallRateSeconds, false);
-    private readonly Timer FallTimer = new Timer(FallRateSeconds);
+    private readonly Timer FallTimer = new Timer(FallRateSeconds, false);
     private readonly Timer RepeatedInputTimer = new Timer(InputRepeatRateSeconds);
-
-    public class PausedScope : System.IDisposable
-    {
-        public Tetromino _tetromino;
-
-        public PausedScope(Tetromino tetromino)
-        {
-            _tetromino = tetromino;
-            _tetromino._paused = true;
-            _tetromino.HardTerminateTimer.Pause();
-            _tetromino.SoftTerminateTimer.Pause();
-            _tetromino.FallTimer.Pause();
-            _tetromino.RepeatedInputTimer.Pause();
-        }
-
-
-        public void Dispose()
-        {
-            _tetromino._paused = false;
-            _tetromino.HardTerminateTimer.Resume();
-            _tetromino.SoftTerminateTimer.Resume();
-            _tetromino.FallTimer.Resume();
-            _tetromino.RepeatedInputTimer.Resume();
-        }
-    }
 
     public void Update()
     {
@@ -90,7 +66,7 @@ public class Tetromino : MonoBehaviour
         }
 
         // Downward acceleration
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (Input.GetKey(KeyCode.DownArrow))
         {
             FallTimer.Frequency = FastFallRateSeconds;
         }
@@ -172,6 +148,31 @@ public class Tetromino : MonoBehaviour
         }
         StartCoroutine(SmoothMovement(new Vector3(direction.x, direction.y), then: OnMove));
         return true;
+    }
+
+    public class PausedScope : System.IDisposable
+    {
+        public Tetromino _tetromino;
+
+        public PausedScope(Tetromino tetromino)
+        {
+            _tetromino = tetromino;
+            _tetromino._paused = true;
+            _tetromino.HardTerminateTimer.Pause();
+            _tetromino.SoftTerminateTimer.Pause();
+            _tetromino.FallTimer.Pause();
+            _tetromino.RepeatedInputTimer.Pause();
+        }
+
+
+        public void Dispose()
+        {
+            _tetromino._paused = false;
+            _tetromino.HardTerminateTimer.Resume();
+            _tetromino.SoftTerminateTimer.Resume();
+            _tetromino.FallTimer.Resume();
+            _tetromino.RepeatedInputTimer.Resume();
+        }
     }
 
     IEnumerator SmoothMovement(Vector3 offset, float? rotateAngle = null, float? duration = null, Action? then = null)

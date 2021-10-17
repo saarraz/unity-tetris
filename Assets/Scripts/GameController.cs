@@ -22,7 +22,8 @@ public class GameController : MonoBehaviour
             _nextTetromino = value;
             if (value)
             {
-                ShowTetrominoInDisplay(value!, NextTetrominoPreviewDisplay!);
+                GameObject displayed = ShowTetrominoInDisplay(value!, NextTetrominoPreviewDisplay!);
+                displayed.GetComponent<Animation>().PlayQueued("SlideFromOffscreen");
             }
         }
     }
@@ -44,25 +45,36 @@ public class GameController : MonoBehaviour
     public void Start()
     {
         RowDetectors = GetComponentsInChildren<RowDetector>();
-        StartNextTurn();
+        GenerateNextTetromino();
+        StartCoroutine(StartNextTurn());
     }
 
-    public void StartNextTurn()
+    public IEnumerator StartNextTurn()
     {
         Debug.Assert(!CurrentTetrominoPrefab, "StartNextTurn() called while turn is in progress");
+        Debug.Assert(NextTetrominoPrefab, "StartNextTurn() called with no next tetromino.");
+        GameObject nextTetromino = NextTetrominoPreviewDisplay!.transform.GetChild(0).gameObject;
+        Animation spawnAnimation = nextTetromino.GetComponent<Animation>();
+        yield return spawnAnimation.WhilePlaying("JumpIn");
+        Destroy(nextTetromino);
         Spawn(NextTetrominoPrefab);
-        NextTetrominoPrefab = Generator!.GetRandomTetrominoPrefab();
-
+        GenerateNextTetromino();
+        yield break;
     }
 
-    void ShowTetrominoInDisplay(GameObject tetrominoPrefab, GameObject display)
+    public void GenerateNextTetromino()
+    {
+        NextTetrominoPrefab = Generator!.GetRandomTetrominoPrefab();
+    }
+
+    GameObject ShowTetrominoInDisplay(GameObject tetrominoPrefab, GameObject display)
     {
         var children = (from Transform child in display.transform select child.gameObject).ToArray();
         foreach (var child in children)
         {
             Destroy(child);
         }
-        Instantiate(tetrominoPrefab.GetComponent<Tetromino>().Body, display.transform);
+        return Instantiate(tetrominoPrefab.GetComponent<Tetromino>().Body, display.transform)!;
     }
 
 
@@ -70,7 +82,6 @@ public class GameController : MonoBehaviour
     {
         Debug.Assert(!CurrentTetrominoPrefab, "Spawn() called while turn is in progress");
         (CurrentTetromino, CurrentTetrominoPrefab) = Generator!.Generate(Prefab);
-        Debug.Log($"Prefab: {CurrentTetrominoPrefab}");
         _tetrominoSavedSinceLastSpawn = false;
     }
 
@@ -136,7 +147,7 @@ public class GameController : MonoBehaviour
                 block.transform.position -= new Vector3(0, rowsDestroyedBelow * Tetromino.BlockSize);
             }
         }
-        StartNextTurn();
+        yield return StartCoroutine(StartNextTurn());
         yield break;
     }
 
