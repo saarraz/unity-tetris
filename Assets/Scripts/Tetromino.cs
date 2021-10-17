@@ -186,22 +186,17 @@ public class Tetromino : MonoBehaviour
             var positionBefore = transform.position;
             var targetPosition = positionBefore + offset;
             var rotationBefore = Body!.transform.localRotation;
-            var startTime = Time.fixedTime;
-            for (var elapsed = 0f; elapsed < duration; elapsed = Time.fixedTime - startTime) {
-                var progress = Tween.EaseOutBack.Evaluate(elapsed / duration.Value);
-                transform.position = Vector3.Lerp(positionBefore, targetPosition, progress);
-                if (rotateAngle.HasValue)
-                {
-                    Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, progress * rotateAngle.Value);
+            yield return Utils.Animate(
+                duration.Value,
+                Tween.EaseOutBack,
+                t => transform.position = Vector3.Lerp(positionBefore, targetPosition, t),
+                t => {
+                    if (rotateAngle.HasValue)
+                    {
+                        Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, t * rotateAngle.Value);
+                    }
                 }
-                yield return new WaitForFixedUpdate();
-            }
-            transform.position = targetPosition;
-            if (rotateAngle.HasValue)
-            {
-                Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, rotateAngle.Value);
-            }
-            yield return new WaitForFixedUpdate();
+            );
             then?.Invoke();
         }
         yield break;
@@ -212,12 +207,10 @@ public class Tetromino : MonoBehaviour
         yield return new WaitForFixedUpdate();
         if (CanMove(Vector2.down))
         {
-            Debug.Log("Can move down");
             HardTerminateTimer.Reset(stop: true);
             SoftTerminateTimer.Reset(stop: true);
             yield break;
         }
-        Debug.Log($"Can't move down {SoftTerminateTimer.Paused}");
         // Hard terminate timer is only reset if it stops touching down (terminate even if player keeps moving).
         if (!HardTerminateTimer.Running)
         {

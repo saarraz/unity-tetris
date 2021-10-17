@@ -1,5 +1,6 @@
 #nullable enable
 
+using Pixelplacement;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,6 +13,7 @@ public class GameController : MonoBehaviour
     public RowDetector[]? RowDetectors;
     public GameObject? SavedTetrominoDisplay;
     public GameObject? NextTetrominoPreviewDisplay;
+    public GameObject? JumpOutAnchor;
 
     public Tetromino? CurrentTetromino { get; private set; }
     public GameObject? CurrentTetrominoPrefab { get; private set; }
@@ -28,6 +30,7 @@ public class GameController : MonoBehaviour
         }
     }
     private GameObject? _savedTetromino;
+    private GameObject? _displayedSavedTetromino;
     public GameObject? SavedTetrominoPrefab {
         get => _savedTetromino;
         private set
@@ -35,7 +38,7 @@ public class GameController : MonoBehaviour
             _savedTetromino = value;
             if (value)
             {
-                ShowTetrominoInDisplay(value!, SavedTetrominoDisplay!);
+                _displayedSavedTetromino = ShowTetrominoInDisplay(value!, SavedTetrominoDisplay!);
             }
         }
     }
@@ -51,15 +54,13 @@ public class GameController : MonoBehaviour
 
     public IEnumerator StartNextTurn()
     {
-        Debug.Assert(!CurrentTetrominoPrefab, "StartNextTurn() called while turn is in progress");
         Debug.Assert(NextTetrominoPrefab, "StartNextTurn() called with no next tetromino.");
         GameObject nextTetromino = NextTetrominoPreviewDisplay!.transform.GetChild(0).gameObject;
         Animation spawnAnimation = nextTetromino.GetComponent<Animation>();
-        yield return spawnAnimation.WhilePlaying("JumpIn");
+        yield return spawnAnimation.PlayUntilEnd("JumpIn");
         Destroy(nextTetromino);
         Spawn(NextTetrominoPrefab);
         GenerateNextTetromino();
-        yield break;
     }
 
     public void GenerateNextTetromino()
@@ -80,7 +81,10 @@ public class GameController : MonoBehaviour
 
     public void Spawn(GameObject? Prefab = null)
     {
-        Debug.Assert(!CurrentTetrominoPrefab, "Spawn() called while turn is in progress");
+        if (CurrentTetrominoPrefab)
+        {
+            CancelTurn();
+        }
         (CurrentTetromino, CurrentTetrominoPrefab) = Generator!.Generate(Prefab);
         _tetrominoSavedSinceLastSpawn = false;
     }
@@ -151,16 +155,54 @@ public class GameController : MonoBehaviour
         yield break;
     }
 
-    private void SaveTetromino()
+    private IEnumerator AnimateTetrominoSave(GameObject newSaved, GameObject? oldSaved = null)
+    {
+        GameObject newSavedBody = newSaved.transform.GetChild(0).gameObject;
+        var fromPosition = newSaved.transform.position;
+        var toPosition = JumpOutAnchor!.transform.position;
+        var fromRotation = newSaved.transform.rotation;
+        var toRotation = JumpOutAnchor!.transform.rotation;
+        var xCurve = Tween.EaseIn;
+        var yCurve = Tween.EaseOut;
+        var rotationCurve = Tween.EaseOut;
+        yield return Utils.Animate(
+            duration: .2f,
+            t => newSaved.transform.position = new Vector3(
+                Mathf.Lerp(fromPosition.x, toPosition.x, xCurve.Evaluate(t)),
+                Mathf.Lerp(fromPosition.y, toPosition.y, yCurve.Evaluate(t))
+            ),
+            t => newSavedBody.transform.rotation = Quaternion.Lerp(fromRotation, toRotation, rotationCurve.Evaluate(t))
+        );
+        newSaved.transform.SetParent(SavedTetrominoDisplay!.transform);
+        newSaved.transform.localPosition = Vector3.zero;
+        newSavedBody.transform.rotation = Quaternion.identity;
+        Animation newSavedAnimation = newSavedBody.GetComponent<Animation>();
+        yield return newSavedAnimation.PlayUntilEvent("JumpOut", newSavedAnimation.GetClip("JumpOut").events[0]);
+        if (oldSaved)
+        {
+            yield return oldSaved!.GetComponent<Animation>().PlayUntilEnd("JumpInFromSaved");
+        }
+    }
+
+
+    private IEnumerator SaveTetromino(Action? then = null)
     {
         if (!CurrentTetrominoPrefab) {
             Debug.LogWarning("CurrentTetrominoPrefab was null when trying to save tetromino");
-            return;
+            yield break;
         }
         GameObject newSaved = CurrentTetrominoPrefab!;
-        CancelTurn();
-        Spawn(SavedTetrominoPrefab);
+        CurrentTetromino!.GetComponent<Tetromino>().enabled = false;
+        yield return AnimateTetrominoSave(CurrentTetromino!.gameObject, _displayedSavedTetromino);
+        if (!SavedTetrominoPrefab)
+        {
+            yield return StartNextTurn();
+        } else
+        {
+            Spawn(SavedTetrominoPrefab);
+        }
         SavedTetrominoPrefab = newSaved;
+        then?.Invoke();
     }
 
     public void Update()
@@ -169,8 +211,7 @@ public class GameController : MonoBehaviour
         {
             if (!_tetrominoSavedSinceLastSpawn)
             {
-                SaveTetromino();
-                _tetrominoSavedSinceLastSpawn = true;
+                StartCoroutine(SaveTetromino(then: () => _tetrominoSavedSinceLastSpawn = true));
             } else
             {
                 Debug.Log("Skipping save since already saved since last spawn");
