@@ -1,5 +1,12 @@
 ﻿using UnityEngine;
 
+interface ITimer
+{
+    public bool OnUpdate();
+    public void Pause();
+    public void Resume();
+}
+
 public class Timer
 {
     public float LastTickTime { get; private set; }

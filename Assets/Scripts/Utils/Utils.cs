@@ -35,15 +35,25 @@ public static class Utils
 
     public static IEnumerator Animate(float duration, params Action<float>[] renderFrames)
     {
-        yield return Animate(duration, Tween.EaseLinear, renderFrames);
+        yield return Animate(duration, null, null, renderFrames);
     }
 
     public static IEnumerator Animate(float duration, AnimationCurve? curve, params Action<float>[] renderFrames)
     {
+        yield return Animate(duration, curve, null, renderFrames);
+    }
+
+    public static IEnumerator Animate(float duration, Func<bool> shouldCancel, params Action<float>[] renderFrames)
+    {
+        yield return Animate(duration, null, shouldCancel, renderFrames);
+    }
+
+    public static IEnumerator Animate(float duration, AnimationCurve? curve, Func<bool>? shouldCancel, params Action<float>[] renderFrames)
+    {
         var startTime = Time.fixedTime;
         for (var elapsed = 0f; elapsed <= duration; elapsed = Math.Min(duration, Time.fixedTime - startTime))
         {
-            var progress = elapsed / duration;
+            var progress = shouldCancel?.Invoke() == true ? 1f : elapsed / duration;
             if (curve != null)
             {
                 progress = curve.Evaluate(progress);
@@ -53,9 +63,43 @@ public static class Utils
                 renderFrame(progress);
             }
             yield return new WaitForFixedUpdate();
-            if (elapsed == duration)
+            if (progress == 1)
             {
                 break;
+            }
+        }
+    }
+
+    public class OutStruct<T> where T : struct
+    {
+        private T? _value;
+        public T Value
+        {
+            get
+            {
+                Debug.Assert(_value.HasValue);
+                return _value!.Value;
+            }
+            set
+            {
+                _value = value;
+            }
+        }
+    }
+
+    public class OutClass<T> where T : class
+    {
+        private T? _value;
+        public T Value
+        {
+            get
+            {
+                Debug.Assert(_value != null);
+                return _value!;
+            }
+            set
+            {
+                _value = value;
             }
         }
     }

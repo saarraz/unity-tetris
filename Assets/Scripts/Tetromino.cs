@@ -4,6 +4,7 @@ using System.Collections;
 using UnityEngine;
 using Pixelplacement;
 using System;
+using static Utils;
 
 public class Tetromino : MonoBehaviour
 {
@@ -16,7 +17,7 @@ public class Tetromino : MonoBehaviour
         Controller = FindObjectOfType<GameController>();
         CollisionFilter = new ContactFilter2D();
         CollisionFilter.SetLayerMask(new LayerMask() { value = LayerMask.GetMask("Default") });
-        FallTimer.Start();
+        FallTimer = new MusicTimer(GameObject.Find("music").GetComponent<AudioSource>());
     }
 
     // Delay from when the Tetromino touches the ground until the turn ends, even if the player keeps moving the block.
@@ -34,10 +35,13 @@ public class Tetromino : MonoBehaviour
     // X and Y size of each block.
     public const float BlockSize = 1;
 
-    private bool _paused = false;
+    private bool _locked = false;
+    private int _lockWaitCount = 0;
+    private bool _fastFalling = false;
+    private int _fastFallingCount = 0;
     private readonly Timer HardTerminateTimer = new Timer(HardTerminateDelaySeconds, false);
     private readonly Timer SoftTerminateTimer = new Timer(FallRateSeconds, false);
-    private readonly Timer FallTimer = new Timer(FallRateSeconds, false);
+    private MusicTimer? FallTimer;
     private readonly Timer RepeatedInputTimer = new Timer(InputRepeatRateSeconds);
 
     public void Update()
@@ -46,33 +50,37 @@ public class Tetromino : MonoBehaviour
         bool RepeatedInputTimerTick = RepeatedInputTimer.OnUpdate();
         if (Input.GetKeyDown(KeyCode.LeftArrow))
         {
-            Move(Vector2.left);
+            StartCoroutine(Move(Vector2.left));
             RepeatedInputTimer.Reset();
         }
         else if (RepeatedInputTimerTick && Input.GetKey(KeyCode.LeftArrow))
         {
-            Move(Vector2.left);
+            StartCoroutine(Move(Vector2.left));
         }
 
         // Move right
         if (Input.GetKeyDown(KeyCode.RightArrow))
         {
-            Move(Vector2.right);
+            StartCoroutine(Move(Vector2.right));
             RepeatedInputTimer.Reset();
         }
         else if (RepeatedInputTimerTick && Input.GetKey(KeyCode.RightArrow))
         {
-            Move(Vector2.right);
+            StartCoroutine(Move(Vector2.right));
         }
 
         // Downward acceleration
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            _fastFallingCount = 1;
+        }
         if (Input.GetKey(KeyCode.DownArrow))
         {
-            FallTimer.Frequency = FastFallRateSeconds;
+            _fastFalling = true;
         }
         if (Input.GetKeyUp(KeyCode.DownArrow))
         {
-            FallTimer.Frequency = FallRateSeconds;
+            _fastFalling = false;
         }
 
         // Rotate
@@ -82,10 +90,14 @@ public class Tetromino : MonoBehaviour
         }
 
         // Fall
-        bool FallTimerTick = FallTimer.OnUpdate();
+        bool FallTimerTick = FallTimer!.OnUpdate();
         if (FallTimerTick)
         {
-            Move(Vector2.down);
+            StartCoroutine(Move(Vector2.down * (_fastFalling ? 1 << _fastFallingCount: 1), backoff: true));
+            if (_fastFalling)
+            {
+                _fastFallingCount++;
+            }
         }
 
         // Soft terminate - terminate if the Tetromino is touching something below and hasn't been moved for a certain
@@ -117,11 +129,12 @@ public class Tetromino : MonoBehaviour
 
     private readonly RaycastHit2D[] _hits = new RaycastHit2D[3];
 
-    bool CanMove(Vector2 direction)
+    bool CanMove(Vector2 displacement)
     {
+        var magnitude = displacement.magnitude;
         foreach (var collider in Body!.GetComponentsInChildren<BoxCollider2D>())
         {
-            int collisions = collider.Raycast(direction, CollisionFilter, _hits, BlockSize);
+            int collisions = collider.Raycast(displacement, CollisionFilter, _hits, magnitude);
             for (int i = 0; i < collisions; ++i)
             {
                 if (IsExternalCollider(_hits[i].collider))
@@ -136,74 +149,79 @@ public class Tetromino : MonoBehaviour
 
     float DefaultSmoothMovementDuration()
     {
-        return FallTimer.Frequency / 7;
+        return Math.Max(.001f, Math.Min(.1f, FallTimer!.TimeToNextBeat()));
     }
 
 
-    bool Move(Vector2 direction)
+    IEnumerator Move(Vector2 direction, bool backoff = false)
     {
-        if (!CanMove(direction))
+        var lockScope = new OutClass<LockScope>();
+        yield return AcquireLock(lockScope);
+        using (lockScope.Value)
         {
-            return false;
+            bool canMove;
+            while (!(canMove = CanMove(direction)) && backoff && direction.sqrMagnitude != 1)
+            {
+                direction /= 2;
+            }
+            if (canMove)
+            {
+                yield return SmoothMovement(new Vector3(direction.x, direction.y));
+                yield return OnMove();
+            }
         }
-        StartCoroutine(SmoothMovement(new Vector3(direction.x, direction.y), then: OnMove));
-        return true;
     }
 
-    public class PausedScope : System.IDisposable
+    public class LockScope : System.IDisposable
     {
         public Tetromino _tetromino;
 
-        public PausedScope(Tetromino tetromino)
+        public LockScope(Tetromino tetromino)
         {
+            Debug.Assert(!tetromino._locked, "Double lock attempt");
             _tetromino = tetromino;
-            _tetromino._paused = true;
+            _tetromino._locked = true;
             _tetromino.HardTerminateTimer.Pause();
             _tetromino.SoftTerminateTimer.Pause();
-            _tetromino.FallTimer.Pause();
+            _tetromino.FallTimer!.Pause();
             _tetromino.RepeatedInputTimer.Pause();
         }
 
 
         public void Dispose()
         {
-            _tetromino._paused = false;
+            _tetromino._locked = false;
             _tetromino.HardTerminateTimer.Resume();
             _tetromino.SoftTerminateTimer.Resume();
-            _tetromino.FallTimer.Resume();
+            _tetromino.FallTimer!.Resume();
             _tetromino.RepeatedInputTimer.Resume();
         }
     }
 
-    IEnumerator SmoothMovement(Vector3 offset, float? rotateAngle = null, float? duration = null, Action? then = null)
+    IEnumerator SmoothMovement(Vector3 offset, float? rotateAngle = null, float? duration = null)
     {
-        while (_paused)
-        {
-            yield return new WaitForFixedUpdate();
-        }
-        using (new PausedScope(this)) {
-            duration ??= DefaultSmoothMovementDuration();
-            var positionBefore = transform.position;
-            var targetPosition = positionBefore + offset;
-            var rotationBefore = Body!.transform.localRotation;
-            yield return Utils.Animate(
-                duration.Value,
-                Tween.EaseOutBack,
-                t => transform.position = Vector3.Lerp(positionBefore, targetPosition, t),
-                t => {
-                    if (rotateAngle.HasValue)
-                    {
-                        Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, t * rotateAngle.Value);
-                    }
+        Debug.Assert(_locked);
+        duration ??= DefaultSmoothMovementDuration();
+        var positionBefore = transform.position;
+        var targetPosition = positionBefore + offset;
+        var rotationBefore = Body!.transform.localRotation;
+        yield return Utils.Animate(
+            duration.Value,
+            Tween.EaseOutBack,
+            shouldCancel: () => _lockWaitCount > 0,
+            t => transform.position = Vector3.Lerp(positionBefore, targetPosition, t),
+            t => {
+                if (rotateAngle.HasValue)
+                {
+                    Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, t * rotateAngle.Value);
                 }
-            );
-            then?.Invoke();
-        }
-        yield break;
+            }
+        );
     }
 
-    IEnumerator OnMoveImpl()
+    IEnumerator OnMove()
     {
+        Debug.Assert(_locked);
         yield return new WaitForFixedUpdate();
         if (CanMove(Vector2.down))
         {
@@ -220,20 +238,17 @@ public class Tetromino : MonoBehaviour
         SoftTerminateTimer.Start();
     }
 
-    void OnMove()
-    {
-        StartCoroutine(OnMoveImpl());
-    }
-
     // Terminate this tetromino, letting the GameController break it down and spawn another one.
     void Terminate()
     {
         Controller!.OnTetrominoTermination(this);
     }
 
-    void Rotate(Vector3 displacement)
+    IEnumerator Rotate(Vector3 displacement)
     {
-        StartCoroutine(SmoothMovement(displacement, rotateAngle: 90, then: OnMove));
+        Debug.Assert(_locked);
+        yield return SmoothMovement(displacement, rotateAngle: 90);
+        yield return OnMove();
     }
 
     private readonly Vector3[] _rotationDisplacements = new Vector3[] {
@@ -250,55 +265,78 @@ public class Tetromino : MonoBehaviour
 
     private readonly Collider2D[] _colliders = new Collider2D[5];
 
-    IEnumerator RotateIfPossible()
+    IEnumerator CanRotate(OutStruct<bool> canRotate, OutStruct<Vector3> displacement)
     {
-        while (_paused)
+        Debug.Assert(_locked);
+        // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
+        // displacement that makes it not overlap any other block or wall.
+        var rotationChecker = Instantiate(Body, this.transform);
+        foreach (SpriteRenderer sprite in rotationChecker!.GetComponentsInChildren<SpriteRenderer>())
+        {
+            sprite.enabled = false;
+        }
+        try
+        {
+            rotationChecker.transform.Rotate(0, 0, 90);
+            foreach (Vector3 possibleDisplacement in _rotationDisplacements)
+            {
+                if (possibleDisplacement.x != 0 || possibleDisplacement.y != 0)
+                {
+                    rotationChecker.transform.localPosition = possibleDisplacement;
+                }
+                yield return new WaitForFixedUpdate();
+                bool overlap = false;
+                foreach (var collider in rotationChecker.GetComponentsInChildren<BoxCollider2D>())
+                {
+                    int colliderCount = collider.OverlapCollider(CollisionFilter, _colliders);
+
+                    for (int j = 0; j < colliderCount; ++j)
+                    {
+                        if (IsExternalCollider(_colliders[j]))
+                        {
+                            overlap = true;
+                            break;
+                        }
+                    }
+                }
+                if (!overlap)
+                {
+                    canRotate.Value = true;
+                    displacement.Value = possibleDisplacement;
+                    yield break;
+                }
+            }
+        }
+        finally
+        {
+            DestroyImmediate(rotationChecker);
+        }
+        canRotate.Value = false;
+    }
+
+    IEnumerator AcquireLock(OutClass<LockScope> lockScope)
+    {
+        _lockWaitCount++;
+        while (_locked)
         {
             yield return new WaitForFixedUpdate();
         }
-        using (new PausedScope(this))
-        {
-            // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
-            // displacement that makes it not overlap any other block or wall.
-            var rotationChecker = Instantiate(Body, this.transform);
-            foreach (SpriteRenderer sprite in rotationChecker!.GetComponentsInChildren<SpriteRenderer>())
-            {
-                sprite.enabled = false;
-            }
-            try
-            {
-                rotationChecker.transform.Rotate(0, 0, 90);
-                foreach (Vector3 displacement in _rotationDisplacements)
-                {
-                    if (displacement.x != 0 || displacement.y != 0)
-                    {
-                        rotationChecker.transform.localPosition = displacement;
-                    }
-                    yield return new WaitForFixedUpdate();
-                    bool overlap = false;
-                    foreach (var collider in rotationChecker.GetComponentsInChildren<BoxCollider2D>())
-                    {
-                        int colliderCount = collider.OverlapCollider(CollisionFilter, _colliders);
+        _lockWaitCount--;
+        lockScope.Value = new LockScope(this);
+    }
 
-                        for (int j = 0; j < colliderCount; ++j)
-                        {
-                            if (IsExternalCollider(_colliders[j]))
-                            {
-                                overlap = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!overlap)
-                    {
-                        Rotate(displacement);
-                        break;
-                    }
-                }
-            }
-            finally
+    IEnumerator RotateIfPossible()
+    {
+        var lockScope = new OutClass<LockScope>();
+        yield return AcquireLock(lockScope);
+        using (lockScope.Value)
+        {
+            var canRotate = new OutStruct<bool>();
+            var displacement = new OutStruct<Vector3>();
+            yield return CanRotate(canRotate, displacement);
+            if (canRotate.Value)
             {
-                DestroyImmediate(rotationChecker);
+                yield return Rotate(displacement.Value);
             }
         }
     }

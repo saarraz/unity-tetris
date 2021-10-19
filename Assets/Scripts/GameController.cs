@@ -14,6 +14,7 @@ public class GameController : MonoBehaviour
     public GameObject? SavedTetrominoDisplay;
     public GameObject? NextTetrominoPreviewDisplay;
     public GameObject? JumpOutAnchor;
+    public MusicTempoController? MusicTempoController;
 
     public Tetromino? CurrentTetromino { get; private set; }
     public GameObject? CurrentTetrominoPrefab { get; private set; }
@@ -150,6 +151,10 @@ public class GameController : MonoBehaviour
             {
                 block.transform.position -= new Vector3(0, rowsDestroyedBelow * Tetromino.BlockSize);
             }
+        }
+        if (destroyedRows.Count() > 0)
+        {
+            MusicTempoController!.UpTempo();
         }
         yield return StartCoroutine(StartNextTurn());
         yield break;
