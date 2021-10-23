@@ -381,6 +381,7 @@ GameObject:
   m_Component:
   - component: {fileID: 77814334}
   - component: {fileID: 77814333}
+  - component: {fileID: 77814335}
   m_Layer: 0
   m_Name: music
   m_TagString: Untagged
@@ -498,6 +499,31 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 9
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &77814335
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 77814332}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9cee32b398c66414c8e4d4fe17f8fcc4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  AudioSource: {fileID: 0}
+  TempoClips:
+  - {fileID: 8300000, guid: 0ca17613fe4d32a419f2a07b409df18a, type: 3}
+  - {fileID: 8300000, guid: 07ab1a39ae7774d4485036367f37fb18, type: 3}
+  - {fileID: 8300000, guid: 97d443d3cf3ad064f9f72b82dd4fa2d9, type: 3}
+  - {fileID: 8300000, guid: 182ef1dd6fc80d240907c6c6ca3958ff, type: 3}
+  - {fileID: 8300000, guid: 8f7e58715cd53504d8684febbbc30e89, type: 3}
+  - {fileID: 8300000, guid: 53ba90e5695ec9c47b7d7cb8e861408b, type: 3}
+  - {fileID: 8300000, guid: 96ec23ade2a79b64fbe1fadf83b2da6f, type: 3}
+  - {fileID: 8300000, guid: 61c171b48203b2d4e9a6d52d93cc51c6, type: 3}
+  - {fileID: 8300000, guid: ccabd3ffa18fb5e4f9c7fcf61fccec48, type: 3}
+  - {fileID: 8300000, guid: aa8a10a7353edf341b2c4eec7c9b863d, type: 3}
+  - {fileID: 8300000, guid: 58ed831e02b0a4144a35a02626849a39, type: 3}
 --- !u!4 &82377910 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7300625425669418650, guid: 90a9af29e77c36c46a32be6fbae08521,
@@ -1343,6 +1369,7 @@ MonoBehaviour:
   SavedTetrominoDisplay: {fileID: 1045779013}
   NextTetrominoPreviewDisplay: {fileID: 2034454911}
   JumpOutAnchor: {fileID: 440007787}
+  MusicTempoController: {fileID: 0}
 --- !u!4 &962825390
 Transform:
   m_ObjectHideFlags: 0

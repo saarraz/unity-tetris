@@ -10,6 +10,7 @@ public class Tetromino : MonoBehaviour
 {
     public GameController? Controller;
     public GameObject? Body;
+    public MusicTimer? FallTimer;
     private ContactFilter2D CollisionFilter;
 
     public void Start()
@@ -17,7 +18,7 @@ public class Tetromino : MonoBehaviour
         Controller = FindObjectOfType<GameController>();
         CollisionFilter = new ContactFilter2D();
         CollisionFilter.SetLayerMask(new LayerMask() { value = LayerMask.GetMask("Default") });
-        FallTimer = new MusicTimer(GameObject.Find("music").GetComponent<AudioSource>());
+        FallTimer = GameObject.Find("music").GetComponent<MusicTimer>();
     }
 
     // Delay from when the Tetromino touches the ground until the turn ends, even if the player keeps moving the block.
@@ -41,13 +42,12 @@ public class Tetromino : MonoBehaviour
     private int _fastFallingCount = 0;
     private readonly Timer HardTerminateTimer = new Timer(HardTerminateDelaySeconds, false);
     private readonly Timer SoftTerminateTimer = new Timer(FallRateSeconds, false);
-    private MusicTimer? FallTimer;
     private readonly Timer RepeatedInputTimer = new Timer(InputRepeatRateSeconds);
 
     public void Update()
     {
         // Move left
-        bool RepeatedInputTimerTick = RepeatedInputTimer.OnUpdate();
+        bool RepeatedInputTimerTick = RepeatedInputTimer.OnUpdate() > 0;
         if (Input.GetKeyDown(KeyCode.LeftArrow))
         {
             StartCoroutine(Move(Vector2.left));
@@ -90,20 +90,25 @@ public class Tetromino : MonoBehaviour
         }
 
         // Fall
-        bool FallTimerTick = FallTimer!.OnUpdate();
-        if (FallTimerTick)
+        int FallTimerTicks = FallTimer!.Ticks;
+        if (FallTimerTicks != 0)
         {
-            StartCoroutine(Move(Vector2.down * (_fastFalling ? 1 << _fastFallingCount: 1), backoff: true));
-            if (_fastFalling)
-            {
-                _fastFallingCount++;
+            Debug.Log(FallTimerTicks);
+            int movement;
+            for (movement = (_fastFalling ? 1 << _fastFallingCount : FallTimerTicks); movement != 0 && !CanMove(Vector2.down * movement); movement /= 2);
+            if (movement != 0) {
+                StartCoroutine(Move(Vector2.down * movement, assumeCanMove: true));
+                if (_fastFalling)
+                {
+                    _fastFallingCount++;
+                }
             }
         }
 
         // Soft terminate - terminate if the Tetromino is touching something below and hasn't been moved for a certain
         // period. This allows players to still move the Tetromino after it has been touched down, but if they don't
         // want to - terminates the Tetromino.
-        bool SoftTerminateTimerTick = SoftTerminateTimer.OnUpdate();
+        bool SoftTerminateTimerTick = SoftTerminateTimer.OnUpdate() > 0;
         if (SoftTerminateTimerTick)
         {
             Terminate();
@@ -111,7 +116,7 @@ public class Tetromino : MonoBehaviour
 
         // Hard terminate - terminate if the block has been touching something below for a certain period, regardless
         // of movement. This prevents players from moving the piece endlessly left and right across the floor.
-        bool HardTerminateTimerTick = HardTerminateTimer.OnUpdate();
+        bool HardTerminateTimerTick = HardTerminateTimer.OnUpdate() > 0;
         if (HardTerminateTimerTick)
         {
             Terminate();
@@ -153,18 +158,13 @@ public class Tetromino : MonoBehaviour
     }
 
 
-    IEnumerator Move(Vector2 direction, bool backoff = false)
+    IEnumerator Move(Vector2 direction, bool assumeCanMove = false)
     {
         var lockScope = new OutClass<LockScope>();
         yield return AcquireLock(lockScope);
         using (lockScope.Value)
         {
-            bool canMove;
-            while (!(canMove = CanMove(direction)) && backoff && direction.sqrMagnitude != 1)
-            {
-                direction /= 2;
-            }
-            if (canMove)
+            if (assumeCanMove || CanMove(direction))
             {
                 yield return SmoothMovement(new Vector3(direction.x, direction.y));
                 yield return OnMove();
@@ -210,7 +210,8 @@ public class Tetromino : MonoBehaviour
             Tween.EaseOutBack,
             shouldCancel: () => _lockWaitCount > 0,
             t => transform.position = Vector3.Lerp(positionBefore, targetPosition, t),
-            t => {
+            t =>
+            {
                 if (rotateAngle.HasValue)
                 {
                     Body!.transform.localRotation = rotationBefore * Quaternion.Euler(0, 0, t * rotateAngle.Value);

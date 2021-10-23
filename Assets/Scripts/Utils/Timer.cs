@@ -2,12 +2,14 @@
 
 interface ITimer
 {
-    public bool OnUpdate();
+
+    // Returns the no. of ticks since the last time OnUpdate was called.
+    public int OnUpdate();
     public void Pause();
     public void Resume();
 }
 
-public class Timer
+public class Timer : ITimer
 {
     public float LastTickTime { get; private set; }
     public float Frequency
@@ -65,19 +67,19 @@ public class Timer
         Running = start;
     }
 
-    public bool OnUpdate()
+    public int OnUpdate()
     {
         if (!Running || Paused)
         {
-            return false;
+            return 0;
         }
         if ((Time.time - _referenceTime) < _remainingDuration)
         {
-            return false;
+            return 0;
         }
         LastTickTime = Time.time;
         Reset();
-        return true;
+        return 1;
     }
 
     public void Reset(bool stop = false)
