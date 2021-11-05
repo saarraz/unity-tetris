@@ -1,7 +1,9 @@
 #nullable enable
 using UnityEngine;
 using System.Collections;
+using System;
 
+// Ticks according to the Tetris theme
 public class MusicTimer : MonoBehaviour
 {
     public AudioSource? AudioSource;
