@@ -1,21 +1,11 @@
 #nullable enable
 using UnityEngine;
 using System.Collections;
+using System;
 
+// Ticks according to the Tetris theme
 public class MusicTimer : MonoBehaviour
 {
-    public AudioSource? AudioSource;
-
-    public bool Paused { get; private set; }
-
-    public float Speed { get => OriginalLength / AudioSource!.clip.length; }
-
-    public int Ticks { get; private set; }
-
-    public float Tempo { get => OriginalTempo / Speed; }
-
-    public float Offset = 0f;
-
     public const float OriginalTempo = 0.857142f;
 
     public const float OriginalLength = 68.62367f;
@@ -195,6 +185,18 @@ public class MusicTimer : MonoBehaviour
         67.28564700000011f,
         67.71421800000012f
     };
+    
+    public AudioSource? AudioSource;
+
+    public bool Paused { get; private set; }
+
+    public float Speed { get => OriginalLength / AudioSource!.clip.length; }
+
+    public int Ticks { get; private set; }
+
+    public float Tempo { get => OriginalTempo / Speed; }
+
+    public float Offset = 0f;
 
     public void Pause()
     {
