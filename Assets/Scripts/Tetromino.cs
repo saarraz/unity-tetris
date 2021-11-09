@@ -50,23 +50,23 @@ public class Tetromino : MonoBehaviour
         bool RepeatedInputTimerTick = RepeatedInputTimer.OnUpdate() > 0;
         if (Input.GetKeyDown(KeyCode.LeftArrow))
         {
-            StartCoroutine(Move(Vector2.left));
+            StartCoroutine(MoveIfPossible(Vector2.left));
             RepeatedInputTimer.Reset();
         }
         else if (RepeatedInputTimerTick && Input.GetKey(KeyCode.LeftArrow))
         {
-            StartCoroutine(Move(Vector2.left));
+            StartCoroutine(MoveIfPossible(Vector2.left));
         }
 
         // Move right
         if (Input.GetKeyDown(KeyCode.RightArrow))
         {
-            StartCoroutine(Move(Vector2.right));
+            StartCoroutine(MoveIfPossible(Vector2.right));
             RepeatedInputTimer.Reset();
         }
         else if (RepeatedInputTimerTick && Input.GetKey(KeyCode.RightArrow))
         {
-            StartCoroutine(Move(Vector2.right));
+            StartCoroutine(MoveIfPossible(Vector2.right));
         }
 
         // Downward acceleration
@@ -93,16 +93,16 @@ public class Tetromino : MonoBehaviour
         int FallTimerTicks = FallTimer!.Ticks;
         if (FallTimerTicks != 0)
         {
-            Debug.Log(FallTimerTicks);
-            int movement;
-            for (movement = (_fastFalling ? 1 << _fastFallingCount : FallTimerTicks); movement != 0 && !CanMove(Vector2.down * movement); movement /= 2);
-            if (movement != 0) {
-                StartCoroutine(Move(Vector2.down * movement, assumeCanMove: true));
-                if (_fastFalling)
-                {
-                    _fastFallingCount++;
-                }
-            }
+            StartCoroutine(MoveAtMost(
+                direction: Vector2.down,
+                atMostCount: _fastFalling ? 1 << _fastFallingCount : FallTimerTicks,
+                amountMoved: new Promise<int>().Then(amountFell => {
+                    if (amountFell != 0 && _fastFalling)
+                    {
+                        _fastFallingCount++;
+                    }
+                })
+            ));
         }
 
         // Soft terminate - terminate if the Tetromino is touching something below and hasn't been moved for a certain
@@ -111,7 +111,7 @@ public class Tetromino : MonoBehaviour
         bool SoftTerminateTimerTick = SoftTerminateTimer.OnUpdate() > 0;
         if (SoftTerminateTimerTick)
         {
-            Terminate();
+            StartCoroutine(Terminate());
         }
 
         // Hard terminate - terminate if the block has been touching something below for a certain period, regardless
@@ -119,7 +119,7 @@ public class Tetromino : MonoBehaviour
         bool HardTerminateTimerTick = HardTerminateTimer.OnUpdate() > 0;
         if (HardTerminateTimerTick)
         {
-            Terminate();
+            StartCoroutine(Terminate());
         }
     }
 
@@ -158,18 +158,49 @@ public class Tetromino : MonoBehaviour
     }
 
 
-    IEnumerator Move(Vector2 direction, bool assumeCanMove = false)
+    public IEnumerator MoveIfPossible(Vector2 direction, Promise<bool>? moved = null)
     {
-        var lockScope = new OutClass<LockScope>();
+        var lockScope = new Promise<LockScope>();
         yield return AcquireLock(lockScope);
         using (lockScope.Value)
         {
-            if (assumeCanMove || CanMove(direction))
+            if (!CanMove(direction))
             {
-                yield return SmoothMovement(new Vector3(direction.x, direction.y));
-                yield return OnMove();
+                moved?.Resolve(false);
+                yield break;
             }
+            yield return Move(direction);
+            moved?.Resolve(true);
         }
+    }
+
+
+    public IEnumerator MoveAtMost(Vector2 direction, int atMostCount, Promise<int>? amountMoved = null)
+    {
+        var lockScope = new Promise<LockScope>();
+        yield return AcquireLock(lockScope);
+        using (lockScope.Value)
+        {
+            int movement = atMostCount;
+            Vector2 offset = default;
+            while (movement != 0 && !CanMove(offset = direction * movement)) {
+                movement--;
+            }
+            if (movement == 0)
+            {
+                amountMoved?.Resolve(movement);
+                yield break;
+            }
+            yield return Move(offset);
+            amountMoved?.Resolve(movement);
+        }
+    }
+
+    public IEnumerator Move(Vector2 direction)
+    {
+        Debug.Assert(_locked);
+        yield return SmoothMovement(new Vector3(direction.x, direction.y));
+        yield return OnMoveFinished();
     }
 
     public class LockScope : System.IDisposable
@@ -220,7 +251,7 @@ public class Tetromino : MonoBehaviour
         );
     }
 
-    IEnumerator OnMove()
+    IEnumerator OnMoveFinished()
     {
         Debug.Assert(_locked);
         yield return new WaitForFixedUpdate();
@@ -240,8 +271,9 @@ public class Tetromino : MonoBehaviour
     }
 
     // Terminate this tetromino, letting the GameController break it down and spawn another one.
-    void Terminate()
+    IEnumerator Terminate()
     {
+        yield return FallTimer!.WaitUntilNextBeat();
         Controller!.OnTetrominoTermination(this);
     }
 
@@ -249,7 +281,7 @@ public class Tetromino : MonoBehaviour
     {
         Debug.Assert(_locked);
         yield return SmoothMovement(displacement, rotateAngle: 90);
-        yield return OnMove();
+        yield return OnMoveFinished();
     }
 
     private readonly Vector3[] _rotationDisplacements = new Vector3[] {
@@ -266,7 +298,7 @@ public class Tetromino : MonoBehaviour
 
     private readonly Collider2D[] _colliders = new Collider2D[5];
 
-    IEnumerator CanRotate(OutStruct<bool> canRotate, OutStruct<Vector3> displacement)
+    IEnumerator CanRotate(Promise<bool> canRotate, Promise<Vector3> displacement)
     {
         Debug.Assert(_locked);
         // Check if we can rotate by copying a transparent version of the body, rotating it and trying to find a short
@@ -302,8 +334,8 @@ public class Tetromino : MonoBehaviour
                 }
                 if (!overlap)
                 {
-                    canRotate.Value = true;
-                    displacement.Value = possibleDisplacement;
+                    canRotate.Resolve(true);
+                    displacement.Resolve(possibleDisplacement);
                     yield break;
                 }
             }
@@ -312,10 +344,10 @@ public class Tetromino : MonoBehaviour
         {
             DestroyImmediate(rotationChecker);
         }
-        canRotate.Value = false;
+        canRotate.Resolve(false);
     }
 
-    IEnumerator AcquireLock(OutClass<LockScope> lockScope)
+    IEnumerator AcquireLock(Promise<LockScope> lockScope)
     {
         _lockWaitCount++;
         while (_locked)
@@ -323,22 +355,25 @@ public class Tetromino : MonoBehaviour
             yield return new WaitForFixedUpdate();
         }
         _lockWaitCount--;
-        lockScope.Value = new LockScope(this);
+        lockScope.Resolve(new LockScope(this));
     }
 
-    IEnumerator RotateIfPossible()
+    public IEnumerator RotateIfPossible(Promise<bool>? rotated = null)
     {
-        var lockScope = new OutClass<LockScope>();
+        var lockScope = new Promise<LockScope>();
         yield return AcquireLock(lockScope);
         using (lockScope.Value)
         {
-            var canRotate = new OutStruct<bool>();
-            var displacement = new OutStruct<Vector3>();
+            var canRotate = new Promise<bool>();
+            var displacement = new Promise<Vector3>();
             yield return CanRotate(canRotate, displacement);
-            if (canRotate.Value)
+            if (!canRotate.Value)
             {
-                yield return Rotate(displacement.Value);
+                rotated?.Resolve(false);
+                yield break;
             }
+            yield return Rotate(displacement.Value);
+            rotated?.Resolve(true);
         }
     }
 }

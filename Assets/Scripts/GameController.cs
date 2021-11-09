@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using static Utils;
 
 public class GameController : MonoBehaviour
 {
@@ -15,21 +16,11 @@ public class GameController : MonoBehaviour
     public GameObject? NextTetrominoPreviewDisplay;
     public GameObject? JumpOutAnchor;
     public MusicTempoController? MusicTempoController;
+    public MusicTimer? MusicTimer;
 
     public Tetromino? CurrentTetromino { get; private set; }
     public GameObject? CurrentTetrominoPrefab { get; private set; }
-    private GameObject? _nextTetromino;
-    public GameObject? NextTetrominoPrefab {
-        get => _nextTetromino;
-        private set {
-            _nextTetromino = value;
-            if (value)
-            {
-                GameObject displayed = ShowTetrominoInDisplay(value!, NextTetrominoPreviewDisplay!);
-                displayed.GetComponent<Animation>().PlayQueued("SlideFromOffscreen");
-            }
-        }
-    }
+    public GameObject? NextTetrominoPrefab { get; private set; }
     private GameObject? _savedTetromino;
     private GameObject? _displayedSavedTetromino;
     public GameObject? SavedTetrominoPrefab {
@@ -49,38 +40,66 @@ public class GameController : MonoBehaviour
     public void Start()
     {
         RowDetectors = GetComponentsInChildren<RowDetector>();
-        GenerateNextTetromino();
-        StartCoroutine(StartNextTurn());
+        StartCoroutine(StartGame());
+    }
+    public IEnumerator StartGame()
+    {
+        yield return MusicTimer!.WaitUntilNextBeat();
+        yield return GenerateNextTetromino(waitForAnimation: true);
+        yield return StartNextTurn();
     }
 
     public IEnumerator StartNextTurn()
     {
         Debug.Assert(NextTetrominoPrefab, "StartNextTurn() called with no next tetromino.");
+        Debug.Assert(MusicTimer!.IsOnBeat());
+
+        float jumpInDuration = MusicTimer!.TimeToNearestBeat(35 / 60f);
+
         GameObject nextTetromino = NextTetrominoPreviewDisplay!.transform.GetChild(0).gameObject;
+        GameObject nextTetrominoPrefab = NextTetrominoPrefab!;
         Animation spawnAnimation = nextTetromino.GetComponent<Animation>();
-        yield return spawnAnimation.PlayUntilEnd("JumpIn");
+
+        // Slide next tetromino in and jump the old one onto the board simultaneausly.
+        yield return GenerateNextTetromino(slideInDuration: jumpInDuration);
+        yield return spawnAnimation.PlayAndWaitForEvent("JumpIn", eventIndex: 0, durationUntilEvent: jumpInDuration);
+        yield return MusicTimer!.WaitUntilNextBeat();
+
         Destroy(nextTetromino);
-        Spawn(NextTetrominoPrefab);
-        GenerateNextTetromino();
+        Tetromino spawned = Spawn(nextTetrominoPrefab);
+        // Wait for spawned tetromino to initialize.
+        yield return null;
+        // We just waited until the beat, so the Tetromino should move now instead of waiting for another beat.
+        yield return spawned.MoveIfPossible(Vector2.down);
     }
 
-    public void GenerateNextTetromino()
+    public IEnumerator GenerateNextTetromino(bool waitForAnimation = false, float? slideInDuration = null)
     {
         NextTetrominoPrefab = Generator!.GetRandomTetrominoPrefab();
+        GameObject displayed = ShowTetrominoInDisplay(NextTetrominoPrefab, NextTetrominoPreviewDisplay!, destroyOld: false);
+        Animation animation = displayed.GetComponent<Animation>();
+        yield return animation.PlayAndWaitForStart("SlideFromOffscreen", duration: slideInDuration ?? MusicTimer!.TimeToNearestBeat(5 / 6f));
+        if (waitForAnimation)
+        {
+            yield return animation.WhilePlaying();
+        }
     }
 
-    GameObject ShowTetrominoInDisplay(GameObject tetrominoPrefab, GameObject display)
+    GameObject ShowTetrominoInDisplay(GameObject tetrominoPrefab, GameObject display, bool destroyOld = true)
     {
-        var children = (from Transform child in display.transform select child.gameObject).ToArray();
-        foreach (var child in children)
+        if (destroyOld)
         {
-            Destroy(child);
+            var children = (from Transform child in display.transform select child.gameObject).ToArray();
+            foreach (var child in children)
+            {
+                Destroy(child);
+            }
         }
         return Instantiate(tetrominoPrefab.GetComponent<Tetromino>().Body, display.transform)!;
     }
 
 
-    public void Spawn(GameObject? Prefab = null)
+    public Tetromino Spawn(GameObject? Prefab = null)
     {
         if (CurrentTetrominoPrefab)
         {
@@ -88,6 +107,7 @@ public class GameController : MonoBehaviour
         }
         (CurrentTetromino, CurrentTetrominoPrefab) = Generator!.Generate(Prefab);
         _tetrominoSavedSinceLastSpawn = false;
+        return CurrentTetromino;
     }
 
     public void CancelTurn()
@@ -162,6 +182,7 @@ public class GameController : MonoBehaviour
 
     private IEnumerator AnimateTetrominoSave(GameObject newSaved, GameObject? oldSaved = null)
     {
+        yield return MusicTimer!.WaitUntilNextBeat();
         GameObject newSavedBody = newSaved.transform.GetChild(0).gameObject;
         var fromPosition = newSaved.transform.position;
         var toPosition = JumpOutAnchor!.transform.position;
@@ -170,8 +191,10 @@ public class GameController : MonoBehaviour
         var xCurve = Tween.EaseIn;
         var yCurve = Tween.EaseOut;
         var rotationCurve = Tween.EaseOut;
+        float jumpOutDuration = MusicTimer!.TimeToNearestBeat(.7f);
+        Debug.Log(jumpOutDuration);
         yield return Utils.Animate(
-            duration: .2f,
+            duration: jumpOutDuration * (.2f / .7f),
             t => newSaved.transform.position = new Vector3(
                 Mathf.Lerp(fromPosition.x, toPosition.x, xCurve.Evaluate(t)),
                 Mathf.Lerp(fromPosition.y, toPosition.y, yCurve.Evaluate(t))
@@ -182,10 +205,11 @@ public class GameController : MonoBehaviour
         newSaved.transform.localPosition = Vector3.zero;
         newSavedBody.transform.rotation = Quaternion.identity;
         Animation newSavedAnimation = newSavedBody.GetComponent<Animation>();
-        yield return newSavedAnimation.PlayUntilEvent("JumpOut", newSavedAnimation.GetClip("JumpOut").events[0]);
+        yield return newSavedAnimation.PlayUntilEnd("JumpOut", duration: jumpOutDuration * (.5f / .7f));
+        yield return newSavedAnimation.PlayAndWaitForStart("SlideToSaved", duration: MusicTimer!.TimeToNearestBeat(.5f));
         if (oldSaved)
         {
-            yield return oldSaved!.GetComponent<Animation>().PlayUntilEnd("JumpInFromSaved");
+            yield return oldSaved!.GetComponent<Animation>().PlayAndWaitForEvent("JumpInFromSaved", eventIndex: 0, durationUntilEvent: MusicTimer!.TimeToNearestBeat(34 / 60f));
         }
     }
 
@@ -204,7 +228,11 @@ public class GameController : MonoBehaviour
             yield return StartNextTurn();
         } else
         {
-            Spawn(SavedTetrominoPrefab);
+            Tetromino spawned = Spawn(SavedTetrominoPrefab);
+            // Wait for Start() to be called on Tetromino
+            yield return null;
+            // We just waited until the beat, so the Tetromino should move now instead of waiting for another beat.
+            yield return spawned.MoveIfPossible(Vector2.down);
         }
         SavedTetrominoPrefab = newSaved;
         then?.Invoke();

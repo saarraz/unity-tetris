@@ -270,8 +270,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 58853913}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -6, y: 10, z: 0}
-  m_LocalScale: {x: 0.99, y: 19.082756, z: 1}
+  m_LocalPosition: {x: -6, y: 9.5, z: 0}
+  m_LocalScale: {x: 0.9, y: 19.9, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 3
@@ -382,6 +382,7 @@ GameObject:
   - component: {fileID: 77814334}
   - component: {fileID: 77814333}
   - component: {fileID: 77814335}
+  - component: {fileID: 77814336}
   m_Layer: 0
   m_Name: music
   m_TagString: Untagged
@@ -508,10 +509,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 77814332}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9cee32b398c66414c8e4d4fe17f8fcc4, type: 3}
+  m_Script: {fileID: 11500000, guid: e31975dceb526d9498eac099967bc321, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  AudioSource: {fileID: 0}
+  AudioSource: {fileID: 77814333}
   TempoClips:
   - {fileID: 8300000, guid: 0ca17613fe4d32a419f2a07b409df18a, type: 3}
   - {fileID: 8300000, guid: 07ab1a39ae7774d4485036367f37fb18, type: 3}
@@ -524,6 +525,20 @@ MonoBehaviour:
   - {fileID: 8300000, guid: ccabd3ffa18fb5e4f9c7fcf61fccec48, type: 3}
   - {fileID: 8300000, guid: aa8a10a7353edf341b2c4eec7c9b863d, type: 3}
   - {fileID: 8300000, guid: 58ed831e02b0a4144a35a02626849a39, type: 3}
+--- !u!114 &77814336
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 77814332}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be63274cffeb08241acee5ff23eea138, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  AudioSource: {fileID: 77814333}
+  Offset: 0
 --- !u!4 &82377910 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7300625425669418650, guid: 90a9af29e77c36c46a32be6fbae08521,
@@ -943,7 +958,7 @@ Transform:
   m_GameObject: {fileID: 429646671}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: -0.5, y: 0, z: 0}
-  m_LocalScale: {x: 12, y: 1, z: 1}
+  m_LocalScale: {x: 11.9, y: 0.9, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 1
@@ -1369,7 +1384,8 @@ MonoBehaviour:
   SavedTetrominoDisplay: {fileID: 1045779013}
   NextTetrominoPreviewDisplay: {fileID: 2034454911}
   JumpOutAnchor: {fileID: 440007787}
-  MusicTempoController: {fileID: 0}
+  MusicTempoController: {fileID: 77814335}
+  MusicTimer: {fileID: 77814336}
 --- !u!4 &962825390
 Transform:
   m_ObjectHideFlags: 0
@@ -1748,8 +1764,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1257829036}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 5, y: 10, z: 0}
-  m_LocalScale: {x: 1, y: 19.082756, z: 1}
+  m_LocalPosition: {x: 5, y: 9.5, z: 0}
+  m_LocalScale: {x: 0.9, y: 19.9, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 4

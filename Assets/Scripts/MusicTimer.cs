@@ -215,6 +215,11 @@ public class MusicTimer : MonoBehaviour
         public int Index;
     };
 
+    private float GetBeatTime(int index)
+    {
+        return OriginalBeatTimes[index] / Speed + Offset;
+    }
+
     public Beat GetBeatAtTime(float playbackTime)
     {
         float currentBeatTime = 0;
@@ -223,14 +228,14 @@ public class MusicTimer : MonoBehaviour
         int i;
         for (i = 0; i < OriginalBeatTimes.Length; ++i)
         {
-            currentBeatTime = OriginalBeatTimes[i] / audioSpeed + Offset;
+            currentBeatTime = GetBeatTime(i);
             if (i == OriginalBeatTimes.Length - 1)
             {
                 nextBeatTime = OriginalLength / audioSpeed + Offset;
             }
             else
             {
-                nextBeatTime = OriginalBeatTimes[i + 1] / audioSpeed + Offset;
+                nextBeatTime = GetBeatTime(i + 1);
             }
             if (playbackTime >= currentBeatTime && playbackTime < nextBeatTime)
             {
@@ -242,8 +247,37 @@ public class MusicTimer : MonoBehaviour
 
     public float TimeToNextBeat()
     {
+        return TimeToFutureBeat(offset: +1);
+    }
+
+    public float TimeToNearestBeat(float seconds)
+    {
+        return GetBeatAtTime(playbackTime: AudioSource!.time + seconds).End - AudioSource!.time;
+    }
+
+    public float TimeToFutureBeat(int offset)
+    {
         float playbackTime = AudioSource!.time;
-        return GetBeatAtTime(playbackTime).End - playbackTime;
+        Beat currentBeat = GetBeatAtTime(playbackTime);
+        float beatPlaybackTime = GetBeatTime((currentBeat.Index + offset) % OriginalBeatTimes.Length);
+        if (beatPlaybackTime < playbackTime)
+        {
+            // Wraparound
+            return AudioSource!.clip.length - playbackTime + beatPlaybackTime;
+        }
+        return beatPlaybackTime - playbackTime;
+    }
+
+    public IEnumerator WaitUntilNextBeat()
+    {
+        yield return new WaitForSeconds(TimeToNextBeat());
+    }
+
+    public bool IsOnBeat()
+    {
+        float playbackTime = AudioSource!.time;
+        Debug.Log($"{playbackTime - GetBeatAtTime(playbackTime).Start}");
+        return playbackTime - GetBeatAtTime(playbackTime).Start < 0.1f;
     }
 
     private Beat? _lastBeat = null;
